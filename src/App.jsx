@@ -9,36 +9,24 @@ const SHEET_HEIGHT = 1800;
 const FRAME_SRC = "/frame.png";
 const PERSON_SCALE = 1;
 const FRAME_SHADOW_CROP = 64;
+const STRIP_COUNT = 3;
 const BACKGROUND_OPTIONS = [
   { id: "bg-1", name: "Mountains", previewSrc: "/select1.png", src: "/bg1.png" },
   { id: "bg-2", name: "Beach", previewSrc: "/select2.png", src: "/bg2.png" },
   { id: "bg-3", name: "Desert", previewSrc: "/select3.png", src: "/bg3.png" },
   { id: "bg-4", name: "Background 4", previewSrc: "/select4.png", src: "/bg4.png" },
 ];
-const STRIP_OPTIONS = [
-  { id: "strip-3", count: 3, name: "3 Strip", previewSrc: "/strip3.png" },
-  { id: "strip-5", count: 5, name: "5 Strip", previewSrc: "/strip5.png" },
-];
-const EMOJI_COUNT = 17;
+const EMOJI_COUNT = 18;
 const AVAILABLE_EMOJIS = Array.from({ length: EMOJI_COUNT }, (_, index) => index + 1).map((number) => ({
   id: String(number),
   src: `/emojis/${number}.png`,
   name: `Emoji ${number}`,
 }));
-const FIXED_EMOJI_POSITIONS = {
-  3: [
-    { x: 0.1, y: 0.5 },
-    { x: 0.9, y: 0.56 },
-    { x: 0.15, y: 0.86 },
-  ],
-  5: [
-    { x: 0.1, y: 0.7 },
-    { x: 0.9, y: 0.86 },
-    { x: 0.15, y: 0.86 },
-    { x: 0.88, y: 0.86 },
-    { x: 0.13, y: 0.84 },
-  ],
-};
+const FIXED_EMOJI_POSITIONS = [
+  { x: 0.04, y: 0.5 },
+  { x: 0.96, y: 0.56 },
+  { x: 0.08, y: 0.88 },
+];
 
 function setCanvasCover(ctx, source, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight) {
   setCanvasCoverWithFocus(ctx, source, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight, 0.5, 0.5);
@@ -93,16 +81,15 @@ function drawFrameBackground(ctx, frameImage) {
   ctx.drawImage(frameImage, 0, 0, sourceWidth, sourceHeight, 0, 0, SHEET_WIDTH, SHEET_HEIGHT);
 }
 
-function getSheetBoxes(stripCount) {
+function getSheetBoxes() {
   const columns = 2;
-  const rows = stripCount;
+  const rows = STRIP_COUNT;
   const stripWidth = SHEET_WIDTH / columns;
-  const stripSideMargin = stripCount === 3 ? 44 : 50;
-  const rowGap = stripCount === 3 ? 42 : 24;
-  const gridScale = stripCount === 3 ? 0.86 : 0.88;
-  const gridTop = 24;
+  const stripSideMargin = 58;
+  const rowGap = 24;
+  const gridTop = 290;
   const imageWidth = stripWidth - stripSideMargin * 2;
-  const imageHeight = ((SHEET_HEIGHT - gridTop * 2 - rowGap * (rows - 1)) / rows) * gridScale;
+  const imageHeight = 390;
   const boxes = [];
 
   for (let row = 0; row < rows; row += 1) {
@@ -278,12 +265,14 @@ export default function App() {
   const segmenterLoadingRef = useRef(null);
   const imageBoxesRef = useRef([]);
 
-  const [step, setStep] = useState(() => sessionStorage.getItem("photoBoothStep") || "background");
+  const [step, setStep] = useState(() => {
+    const savedStep = sessionStorage.getItem("photoBoothStep");
+    return savedStep === "strip" ? "background" : savedStep || "background";
+  });
   const [status, setStatus] = useState({ message: "Select a background", type: "" });
   const [cameras, setCameras] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_OPTIONS[0]);
-  const [stripCount, setStripCount] = useState(3);
   const [cameraReady, setCameraReady] = useState(false);
   const [isCapturingSequence, setIsCapturingSequence] = useState(false);
   const [countdown, setCountdown] = useState(null);
@@ -294,12 +283,12 @@ export default function App() {
 
   const captureLabel = useMemo(() => {
     if (isCapturingSequence) return "Capturing...";
-    if (poses.length >= stripCount) return "Preview";
+    if (poses.length >= STRIP_COUNT) return "Preview";
     return "Capture";
-  }, [isCapturingSequence, poses.length, stripCount]);
+  }, [isCapturingSequence, poses.length]);
   const selectedBackgroundIndex = BACKGROUND_OPTIONS.findIndex((option) => option.id === selectedBackground.id);
   const carouselBackgrounds = BACKGROUND_OPTIONS.map((_, index) => BACKGROUND_OPTIONS[(selectedBackgroundIndex + index) % BACKGROUND_OPTIONS.length]);
-  const capturePreviewBox = getSheetBoxes(stripCount)[0];
+  const capturePreviewBox = getSheetBoxes()[0];
   const capturePreviewRatioValue = capturePreviewBox ? capturePreviewBox.width / capturePreviewBox.height : 2 / 3;
   const capturePreviewRatio = capturePreviewBox ? `${capturePreviewBox.width} / ${capturePreviewBox.height}` : "2 / 3";
 
@@ -408,7 +397,7 @@ export default function App() {
       await videoRef.current.play();
       await listCameras();
       setCameraReady(true);
-      updateStatus(`Capture ${stripCount} photos`, "ready");
+      updateStatus(`Capture ${STRIP_COUNT} photos`, "ready");
     } catch (error) {
       setCameraReady(false);
       updateStatus(error.message || "Could not start camera", "error");
@@ -485,7 +474,7 @@ export default function App() {
       drawFrameBackground(ctx, frameImageRef.current);
     }
 
-    const boxes = getSheetBoxes(stripCount);
+    const boxes = getSheetBoxes();
     imageBoxesRef.current = boxes;
 
     boxes.forEach((box) => {
@@ -504,7 +493,7 @@ export default function App() {
         box.width,
         box.height,
         0.5,
-        stripCount === 5 ? 0.92 : 0.5
+        0.5
       );
     });
 
@@ -533,7 +522,7 @@ export default function App() {
     setEmojiPlacements([]);
     setSheetUrl("");
     setStep(nextStep);
-    updateStatus(nextStep === "background" ? "Select a background" : `Capture ${stripCount} photos`, "ready");
+    updateStatus(nextStep === "background" ? "Select a background" : `Capture ${STRIP_COUNT} photos`, "ready");
   }
 
   function chooseBackground(option) {
@@ -541,16 +530,14 @@ export default function App() {
     setSheetUrl("");
   }
 
-  function chooseStrip(count) {
-    setStripCount(count);
-    setPoses([]);
-    setEmojiPlacements(Array(count).fill(null));
+  function chooseNextBackground() {
+    setSelectedBackground(BACKGROUND_OPTIONS[(selectedBackgroundIndex + 1) % BACKGROUND_OPTIONS.length]);
     setSheetUrl("");
   }
 
   function goToCapture() {
     setPoses([]);
-    setEmojiPlacements(Array(stripCount).fill(null));
+    setEmojiPlacements(Array(STRIP_COUNT).fill(null));
     setSheetUrl("");
     setSelectedDevice("");
     setStep("capture");
@@ -578,13 +565,13 @@ export default function App() {
     return {
       id: crypto.randomUUID(),
       url: poseCanvas.toDataURL("image/png"),
-      previewUrl: makePreviewUrl(poseCanvas, capturePreviewRatioValue, stripCount === 5 ? 0.92 : 0.5),
+      previewUrl: makePreviewUrl(poseCanvas, capturePreviewRatioValue, 0.5),
       baseCanvas: poseCanvas,
     };
   }
 
   async function captureImage() {
-    if (poses.length >= stripCount) {
+    if (poses.length >= STRIP_COUNT) {
       await goToEdit();
       return;
     }
@@ -601,7 +588,7 @@ export default function App() {
     try {
       const nextPoses = [...poses];
 
-      while (nextPoses.length < stripCount) {
+      while (nextPoses.length < STRIP_COUNT) {
         for (let value = 3; value >= 1; value -= 1) {
           setCountdown(value);
           updateStatus(`Photo ${nextPoses.length + 1} in ${value}`);
@@ -656,18 +643,17 @@ export default function App() {
   }
 
   async function selectEmojiForFixedSlot(emoji) {
-    const positions = FIXED_EMOJI_POSITIONS[stripCount] || FIXED_EMOJI_POSITIONS[3];
     const existingIndex = emojiPlacements.findIndex((placement) => placement?.emoji.id === emoji.id);
     const nextPlacements = [...emojiPlacements];
 
     if (existingIndex >= 0) {
       nextPlacements[existingIndex] = null;
     } else {
-      const emptyIndex = nextPlacements.findIndex((placement, index) => index < stripCount && !placement);
-      const targetIndex = emptyIndex >= 0 ? emptyIndex : stripCount - 1;
+      const emptyIndex = nextPlacements.findIndex((placement, index) => index < STRIP_COUNT && !placement);
+      const targetIndex = emptyIndex >= 0 ? emptyIndex : STRIP_COUNT - 1;
       nextPlacements[targetIndex] = {
         emoji,
-        ...positions[targetIndex],
+        ...FIXED_EMOJI_POSITIONS[targetIndex],
       };
     }
 
@@ -740,40 +726,11 @@ export default function App() {
                   <img src={option.previewSrc} alt={option.name} />
                 </button>
               ))}
+              <button className="carousel-next" type="button" onClick={chooseNextBackground} aria-label="Next background">
+                &gt;
+              </button>
             </div>
             <div className="background-actions">
-              <button className="primary" type="button" onClick={() => setStep("strip")}>
-                Next
-              </button>
-            </div>
-          </section>
-        </main>
-      )}
-
-      {step === "strip" && (
-        <main className="strip-selection-screen">
-          <section className="strip-chooser">
-            <h2>
-              Pick your <span>strip</span>
-            </h2>
-            <div className="strip-grid">
-              {STRIP_OPTIONS.map((option) => (
-                <button
-                  className={`strip-choice ${stripCount === option.count ? "selected" : ""}`.trim()}
-                  type="button"
-                  key={option.id}
-                  onClick={() => chooseStrip(option.count)}
-                >
-                  <i aria-hidden="true" />
-                  <img className="strip-preview-image" src={option.previewSrc} alt={option.name} />
-                  <strong>{option.count} Strips</strong>
-                </button>
-              ))}
-            </div>
-            <div className="strip-actions">
-              <button className="ghost" type="button" onClick={() => setStep("background")}>
-                Back
-              </button>
               <button className="primary" type="button" onClick={goToCapture}>
                 Next
               </button>
@@ -783,7 +740,7 @@ export default function App() {
       )}
 
       {step === "capture" && (
-        <main className={`capture-screen strip-${stripCount}`}>
+        <main className="capture-screen">
           <h2 className="capture-title">
             Show your best <span>poses</span>
           </h2>
@@ -802,8 +759,8 @@ export default function App() {
           <aside className="capture-side">
             <section className="captured" aria-label="Captured photos">
               <div
-                className={`pose-list strip-${stripCount}`}
-                style={{ "--pose-count": stripCount, "--thumb-ratio": capturePreviewRatio }}
+                className="pose-list"
+                style={{ "--thumb-ratio": capturePreviewRatio }}
               >
                 {poses.map((pose, index) => (
                   <div className="pose-slot" key={index}>
