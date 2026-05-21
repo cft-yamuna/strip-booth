@@ -82,7 +82,7 @@ if not exist "node_modules" (
   )
 )
 
-echo Starting photo booth app with kiosk printing...
-call npm run kiosk
+echo Starting photo booth app normally...
+call npm run dev -- --port 5173
 
 endlocal
