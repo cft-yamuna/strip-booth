@@ -322,7 +322,7 @@ aside {
 }
 
 .capture-screen {
-  grid-template-columns: 620px 190px;
+  grid-template-columns: 620px;
   grid-template-rows: auto auto auto;
   justify-content: center;
   align-content: center;

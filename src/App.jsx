@@ -10,6 +10,7 @@ const FRAME_SRC = "/frame.png";
 const PERSON_SCALE = 1;
 const FRAME_SHADOW_CROP = 64;
 const STRIP_COUNT = 3;
+const BG_REMOVAL_URL = "http://127.0.0.1:8765/remove-bg";
 const BACKGROUND_OPTIONS = [
   { id: "bg-1", name: "Mountains", previewSrc: "/select1.png", src: "/bg1.png" },
   { id: "bg-2", name: "Beach", previewSrc: "/select2.png", src: "/bg2.png" },
@@ -133,6 +134,35 @@ function makePreviewUrl(sourceCanvas, ratio, focusY = 0.5) {
   const ctx = canvas.getContext("2d");
   setCanvasCoverWithFocus(ctx, sourceCanvas, sourceCanvas.width, sourceCanvas.height, 0, 0, width, height, 0.5, focusY);
   return canvas.toDataURL("image/png");
+}
+
+function canvasToBlob(canvas, type = "image/png", quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("Could not encode camera frame."));
+      }
+    }, type, quality);
+  });
+}
+
+function loadImageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load processed image."));
+    };
+    image.src = url;
+  });
 }
 
 function drawBlackBackgroundReplacement(ctx, keyedCanvas, source, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight) {
@@ -275,6 +305,7 @@ export default function App() {
   const [selectedBackground, setSelectedBackground] = useState(BACKGROUND_OPTIONS[0]);
   const [cameraReady, setCameraReady] = useState(false);
   const [isCapturingSequence, setIsCapturingSequence] = useState(false);
+  const [isProcessingCaptures, setIsProcessingCaptures] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [poses, setPoses] = useState([]);
   const [activeEmoji, setActiveEmoji] = useState(AVAILABLE_EMOJIS[0]);
@@ -282,10 +313,10 @@ export default function App() {
   const [sheetUrl, setSheetUrl] = useState("");
 
   const captureLabel = useMemo(() => {
+    if (isProcessingCaptures) return "Preparing...";
     if (isCapturingSequence) return "Capturing...";
-    if (poses.length >= STRIP_COUNT) return "Preview";
     return "Capture";
-  }, [isCapturingSequence, poses.length]);
+  }, [isCapturingSequence, isProcessingCaptures]);
   const selectedBackgroundIndex = BACKGROUND_OPTIONS.findIndex((option) => option.id === selectedBackground.id);
   const carouselBackgrounds = BACKGROUND_OPTIONS.map((_, index) => BACKGROUND_OPTIONS[(selectedBackgroundIndex + index) % BACKGROUND_OPTIONS.length]);
   const capturePreviewBox = getSheetBoxes()[0];
@@ -423,35 +454,81 @@ export default function App() {
     }
   }
 
-  async function makePoseCanvas() {
-    const video = videoRef.current;
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-
-    if (!width || !height) return null;
-
+  async function makePoseCanvas(sourceCanvas) {
     const backgroundLoaded = await ensureImageLoaded(backgroundImageRef.current, "Loading background");
     if (!backgroundLoaded) {
       updateStatus("Could not load selected background", "error");
       return null;
     }
 
+    const width = sourceCanvas.width;
+    const height = sourceCanvas.height;
     const poseCanvas = document.createElement("canvas");
     poseCanvas.width = width;
     poseCanvas.height = height;
 
     const ctx = poseCanvas.getContext("2d");
     const backgroundImage = backgroundImageRef.current;
+
+    const processedByLocalApi = await drawLocalBackgroundRemoval(ctx, sourceCanvas, width, height);
+    if (processedByLocalApi) {
+      console.info("[bg-removal] Using local API result from", BG_REMOVAL_URL);
+      return poseCanvas;
+    }
+
+    console.info("[bg-removal] Using MediaPipe browser fallback");
     setCanvasCover(ctx, backgroundImage, backgroundImage.naturalWidth, backgroundImage.naturalHeight, 0, 0, poseCanvas.width, poseCanvas.height);
 
     const segmenter = await getSegmenter();
+    const fallbackCanvas = document.createElement("canvas");
     if (segmenter) {
-      await drawSegmentedPerson(ctx, segmenter, keyedCanvasRef.current, video, width, height, 0, 0, poseCanvas.width, poseCanvas.height);
+      await drawSegmentedPerson(ctx, segmenter, fallbackCanvas, sourceCanvas, width, height, 0, 0, poseCanvas.width, poseCanvas.height);
     } else {
-      drawBlackBackgroundReplacement(ctx, keyedCanvasRef.current, video, width, height, 0, 0, poseCanvas.width, poseCanvas.height);
+      drawBlackBackgroundReplacement(ctx, fallbackCanvas, sourceCanvas, width, height, 0, 0, poseCanvas.width, poseCanvas.height);
     }
 
     return poseCanvas;
+  }
+
+  async function drawLocalBackgroundRemoval(ctx, sourceCanvas, width, height) {
+    try {
+      console.info("[bg-removal] Sending frame to local API:", BG_REMOVAL_URL);
+      updateStatus("Removing background");
+
+      const [frameBlob, backgroundBlob] = await Promise.all([
+        canvasToBlob(sourceCanvas),
+        fetch(selectedBackground.src).then((response) => {
+          if (!response.ok) throw new Error("Could not load selected background.");
+          return response.blob();
+        }),
+      ]);
+
+      const formData = new FormData();
+      formData.append("file", frameBlob, "camera.png");
+      formData.append("bg", backgroundBlob, "background.png");
+      formData.append("model", "u2netp");
+      formData.append("enhance_mode", "basic");
+      formData.append("feather", "1");
+      formData.append("output_format", "png");
+
+      const response = await fetch(BG_REMOVAL_URL, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const processedImage = await loadImageFromBlob(await response.blob());
+      ctx.drawImage(processedImage, 0, 0, width, height);
+      console.info("[bg-removal] Local API completed successfully");
+      return true;
+    } catch (error) {
+      console.warn("Local background removal failed, using browser fallback.", error);
+      updateStatus("Local background removal unavailable, using fallback", "error");
+      return false;
+    }
   }
 
   function wait(milliseconds) {
@@ -548,17 +625,25 @@ export default function App() {
     setStep("edit");
   }
 
-  async function captureOnePhoto() {
+  function captureCurrentFrame() {
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) {
       updateStatus("Camera frame is not ready yet", "error");
       return null;
     }
 
+    const frameCanvas = document.createElement("canvas");
+    frameCanvas.width = video.videoWidth;
+    frameCanvas.height = video.videoHeight;
+    frameCanvas.getContext("2d").drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+    return frameCanvas;
+  }
+
+  async function processCapturedFrame(frameCanvas) {
     updateStatus("Adding background");
-    const poseCanvas = await makePoseCanvas();
+    const poseCanvas = await makePoseCanvas(frameCanvas);
     if (!poseCanvas) {
-      updateStatus("Camera frame is not ready yet", "error");
+      updateStatus("Could not process captured photo", "error");
       return null;
     }
 
@@ -571,11 +656,6 @@ export default function App() {
   }
 
   async function captureImage() {
-    if (poses.length >= STRIP_COUNT) {
-      await goToEdit();
-      return;
-    }
-
     if (isCapturingSequence) return;
 
     if (!cameraReady) {
@@ -584,31 +664,46 @@ export default function App() {
     }
 
     setIsCapturingSequence(true);
+    setIsProcessingCaptures(false);
 
     try {
-      const nextPoses = [...poses];
+      const processingTasks = [];
 
-      while (nextPoses.length < STRIP_COUNT) {
+      for (let photoIndex = 0; photoIndex < STRIP_COUNT; photoIndex += 1) {
         for (let value = 3; value >= 1; value -= 1) {
           setCountdown(value);
-          updateStatus(`Photo ${nextPoses.length + 1} in ${value}`);
+          updateStatus(`Photo ${photoIndex + 1} in ${value}`);
           await wait(1000);
         }
 
         setCountdown(null);
-        const pose = await captureOnePhoto();
-        if (!pose) return;
+        const frameCanvas = captureCurrentFrame();
+        if (!frameCanvas) return;
 
-        nextPoses.push(pose);
-        setPoses([...nextPoses]);
-        updateStatus(`Photo ${nextPoses.length} captured`, "ready");
+        console.info(`[capture] Photo ${photoIndex + 1} frame captured; processing in background`);
+        processingTasks.push(processCapturedFrame(frameCanvas));
+        updateStatus(`Photo ${photoIndex + 1} captured`, "ready");
         await wait(350);
       }
 
-      updateStatus("All photos captured. Open preview.", "ready");
+      setIsCapturingSequence(false);
+      setIsProcessingCaptures(true);
+      updateStatus("Preparing final output");
+      const processedPoses = (await Promise.all(processingTasks)).filter(Boolean);
+      if (processedPoses.length !== STRIP_COUNT) {
+        updateStatus("Some photos could not be processed", "error");
+        return;
+      }
+
+      const nextPlacements = Array(STRIP_COUNT).fill(null);
+      setPoses(processedPoses);
+      setEmojiPlacements(nextPlacements);
+      await drawSheet(processedPoses, nextPlacements);
+      setStep("edit");
     } finally {
       setCountdown(null);
       setIsCapturingSequence(false);
+      setIsProcessingCaptures(false);
     }
   }
 
@@ -737,26 +832,11 @@ export default function App() {
               {countdown && <div className="countdown-overlay">{countdown}</div>}
             </div>
             <div className="capture-actions">
-              <button className="primary" type="button" disabled={!cameraReady || isCapturingSequence} onClick={captureImage}>
+              <button className="primary" type="button" disabled={!cameraReady || isCapturingSequence || isProcessingCaptures} onClick={captureImage}>
                 {captureLabel}
               </button>
             </div>
           </section>
-
-          <aside className="capture-side">
-            <section className="captured" aria-label="Captured photos">
-              <div
-                className="pose-list"
-                style={{ "--thumb-ratio": capturePreviewRatio }}
-              >
-                {poses.map((pose, index) => (
-                  <div className="pose-slot" key={index}>
-                    <img src={pose.previewUrl || pose.url} alt={`Photo ${index + 1}`} />
-                  </div>
-                ))}
-              </div>
-            </section>
-          </aside>
         </main>
       )}
 
