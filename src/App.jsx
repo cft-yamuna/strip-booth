@@ -13,6 +13,7 @@ const BACKGROUND_OPTIONS = [
   { id: "bg-1", name: "Mountains", previewSrc: "/select1.png", src: "/bg1.png" },
   { id: "bg-2", name: "Beach", previewSrc: "/select2.png", src: "/bg2.png" },
   { id: "bg-3", name: "Desert", previewSrc: "/select3.png", src: "/bg3.png" },
+  { id: "bg-4", name: "Background 4", previewSrc: "/select4.png", src: "/bg4.png" },
 ];
 const STRIP_OPTIONS = [
   { id: "strip-3", count: 3, name: "3 Strip", previewSrc: "/strip3.png" },
