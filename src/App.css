@@ -355,6 +355,7 @@ aside {
   grid-column: 1;
   grid-row: 2 / 4;
   width: 620px;
+  transform: translateX(-54px);
 }
 
 .capture-actions {
@@ -670,6 +671,10 @@ canvas {
   display: none;
 }
 
+.print-output {
+  display: none;
+}
+
 @media (max-width: 840px) {
   header {
     align-items: flex-start;
@@ -696,5 +701,37 @@ canvas {
 
   .preview {
     padding: 14px;
+  }
+}
+
+@media print {
+  @page {
+    size: 4in 6in;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 4in;
+    height: 6in;
+    margin: 0;
+    background: #2a2c69;
+  }
+
+  .app > :not(.print-output) {
+    display: none !important;
+  }
+
+  .print-output {
+    display: block;
+    width: 4in;
+    height: 6in;
+  }
+
+  .print-output img {
+    display: block;
+    width: 4in;
+    height: 6in;
+    object-fit: fill;
   }
 }

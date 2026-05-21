@@ -662,48 +662,35 @@ export default function App() {
     await drawSheet(poses, nextPlacements);
   }
 
-  function printSheet() {
+  async function saveSheetLocally() {
+    try {
+      updateStatus("Saving final image");
+      const response = await fetch("/api/save-output-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData: sheetUrl }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      updateStatus("Final image saved", "ready");
+      return true;
+    } catch (error) {
+      console.warn("Could not save final image.", error);
+      updateStatus("Could not save final image", "error");
+      return false;
+    }
+  }
+
+  async function printSheet() {
     if (!sheetUrl) return;
 
-    const printWindow = window.open("", "_blank", "width=700,height=900");
-    if (!printWindow) {
-      updateStatus("Allow popups to print the sheet", "error");
-      return;
-    }
+    const saved = await saveSheetLocally();
+    if (!saved) return;
 
-    printWindow.document.write(`
-      <!doctype html>
-      <html>
-        <head>
-          <title>Print 4 x 6 Sheet</title>
-          <style>
-            @page { size: 4in 6in; margin: 0; }
-            html, body {
-              margin: 0;
-              width: 4in;
-              height: 6in;
-              background: #2a2c69;
-            }
-            img {
-              display: block;
-              width: 4in;
-              height: 6in;
-              object-fit: fill;
-            }
-          </style>
-        </head>
-        <body>
-          <img src="${sheetUrl}" alt="4 by 6 photo sheet" />
-          <script>
-            window.addEventListener("load", () => {
-              window.focus();
-              window.print();
-            });
-          <\/script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    window.print();
   }
 
   return (
@@ -813,6 +800,12 @@ export default function App() {
             </button>
           </div>
         </main>
+      )}
+
+      {sheetUrl && (
+        <div className="print-output" aria-hidden="true">
+          <img src={sheetUrl} alt="" />
+        </div>
       )}
 
       <canvas ref={canvasRef} />
