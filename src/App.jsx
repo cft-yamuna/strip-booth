@@ -8,6 +8,7 @@ const SHEET_WIDTH = 1200;
 const SHEET_HEIGHT = 1800;
 const FRAME_SRC = "/frame.png";
 const PERSON_SCALE = 1;
+const PERSON_BASELINE_DROP = 0.06;
 const FRAME_SHADOW_CROP = 64;
 const STRIP_COUNT = 3;
 const BG_REMOVAL_URL = "http://127.0.0.1:8765/remove-bg";
@@ -211,15 +212,15 @@ function drawBlackBackgroundReplacement(ctx, keyedCanvas, source, sourceWidth, s
 
 function drawPositionedPerson(ctx, keyedCanvas, subjectBounds, targetX, targetY, targetWidth, targetHeight) {
   let offsetX = 0;
-  let offsetY = 0;
+  let offsetY = targetHeight * PERSON_BASELINE_DROP;
 
   if (subjectBounds.left <= subjectBounds.right) {
     const subjectCenterX = (subjectBounds.left + subjectBounds.right) / 2;
 
     offsetX = targetWidth / 2 - subjectCenterX;
-    offsetY = targetHeight - subjectBounds.bottom;
+    offsetY += targetHeight - subjectBounds.bottom;
     offsetX = Math.max(-targetWidth * 0.18, Math.min(targetWidth * 0.18, offsetX));
-    offsetY = Math.max(-targetHeight * 0.18, Math.min(targetHeight * 0.18, offsetY));
+    offsetY = Math.max(-targetHeight * 0.18, Math.min(targetHeight * 0.24, offsetY));
   }
 
   const scaledWidth = targetWidth * PERSON_SCALE;
@@ -231,6 +232,33 @@ function drawPositionedPerson(ctx, keyedCanvas, subjectBounds, targetX, targetY,
     scaledWidth,
     scaledHeight
   );
+}
+
+function drawProcessedPerson(ctx, keyedCanvas, image, targetX, targetY, targetWidth, targetHeight) {
+  keyedCanvas.width = targetWidth;
+  keyedCanvas.height = targetHeight;
+
+  const keyedCtx = keyedCanvas.getContext("2d", { willReadFrequently: true });
+  keyedCtx.clearRect(0, 0, targetWidth, targetHeight);
+  keyedCtx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  const frame = keyedCtx.getImageData(0, 0, targetWidth, targetHeight);
+  const pixels = frame.data;
+  const subjectBounds = { left: targetWidth, right: 0, top: targetHeight, bottom: 0 };
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] > 32) {
+      const pixel = index / 4;
+      const x = pixel % targetWidth;
+      const y = Math.floor(pixel / targetWidth);
+      subjectBounds.left = Math.min(subjectBounds.left, x);
+      subjectBounds.right = Math.max(subjectBounds.right, x);
+      subjectBounds.top = Math.min(subjectBounds.top, y);
+      subjectBounds.bottom = Math.max(subjectBounds.bottom, y);
+    }
+  }
+
+  drawPositionedPerson(ctx, keyedCanvas, subjectBounds, targetX, targetY, targetWidth, targetHeight);
 }
 
 async function drawSegmentedPerson(ctx, segmenter, keyedCanvas, source, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight) {
@@ -469,6 +497,7 @@ export default function App() {
 
     const ctx = poseCanvas.getContext("2d");
     const backgroundImage = backgroundImageRef.current;
+    setCanvasCover(ctx, backgroundImage, backgroundImage.naturalWidth, backgroundImage.naturalHeight, 0, 0, poseCanvas.width, poseCanvas.height);
 
     const processedByLocalApi = await drawLocalBackgroundRemoval(ctx, sourceCanvas, width, height);
     if (processedByLocalApi) {
@@ -477,7 +506,6 @@ export default function App() {
     }
 
     console.info("[bg-removal] Using MediaPipe browser fallback");
-    setCanvasCover(ctx, backgroundImage, backgroundImage.naturalWidth, backgroundImage.naturalHeight, 0, 0, poseCanvas.width, poseCanvas.height);
 
     const segmenter = await getSegmenter();
     const fallbackCanvas = document.createElement("canvas");
@@ -495,17 +523,10 @@ export default function App() {
       console.info("[bg-removal] Sending frame to local API:", BG_REMOVAL_URL);
       updateStatus("Removing background");
 
-      const [frameBlob, backgroundBlob] = await Promise.all([
-        canvasToBlob(sourceCanvas),
-        fetch(selectedBackground.src).then((response) => {
-          if (!response.ok) throw new Error("Could not load selected background.");
-          return response.blob();
-        }),
-      ]);
+      const frameBlob = await canvasToBlob(sourceCanvas);
 
       const formData = new FormData();
       formData.append("file", frameBlob, "camera.png");
-      formData.append("bg", backgroundBlob, "background.png");
       formData.append("model", "u2netp");
       formData.append("enhance_mode", "basic");
       formData.append("feather", "1");
@@ -521,7 +542,7 @@ export default function App() {
       }
 
       const processedImage = await loadImageFromBlob(await response.blob());
-      ctx.drawImage(processedImage, 0, 0, width, height);
+      drawProcessedPerson(ctx, keyedCanvasRef.current, processedImage, 0, 0, width, height);
       console.info("[bg-removal] Local API completed successfully");
       return true;
     } catch (error) {
