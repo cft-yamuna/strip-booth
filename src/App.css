@@ -322,7 +322,7 @@ aside {
 }
 
 .capture-screen {
-  grid-template-columns: 620px;
+  grid-template-columns: 820px;
   grid-template-rows: auto auto auto;
   justify-content: center;
   align-content: center;
@@ -354,7 +354,7 @@ aside {
   min-height: 0;
   grid-column: 1;
   grid-row: 2 / 4;
-  width: 620px;
+  width: 820px;
   transform: translateX(-54px);
 }
 
@@ -402,8 +402,8 @@ aside {
 }
 
 .capture-screen .video-wrap {
-  width: 520px;
-  aspect-ratio: 4 / 5;
+  width: 820px;
+  aspect-ratio: var(--capture-ratio, 484 / 390);
 }
 
 video {
@@ -415,11 +415,10 @@ video {
 }
 
 .capture-screen video {
+  width: 100%;
   height: 100%;
-  width: 132%;
-  max-width: none;
   object-fit: cover;
-  transform: translateX(-12.1%);
+  transform: none;
 }
 
 .countdown-overlay {
@@ -514,9 +513,9 @@ select {
   grid-template-columns: repeat(2, calc(var(--action-width) / 2));
   gap: 24px;
   justify-content: center;
-  width: calc(372.55px + 72px + 463px);
-  margin: -280px auto 0;
-  padding-left: calc(372.55px + 72px);
+  width: calc(400px + 72px + 463px);
+  margin: -500px auto 0;
+  padding-left: calc(400px + 72px);
 }
 
 .edit-actions .primary {
@@ -548,8 +547,8 @@ select {
 }
 
 .left-strip-preview {
-  width: 372.55px;
-  height: 1117.64px;
+  width: 400px;
+  height: 1200px;
   aspect-ratio: auto;
 }
 

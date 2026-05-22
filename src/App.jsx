@@ -848,7 +848,7 @@ export default function App() {
             Show your best <span>poses</span>
           </h2>
           <section className="camera-area" aria-label="Camera preview">
-            <div className="video-wrap">
+            <div className="video-wrap" style={{ "--capture-ratio": capturePreviewRatio }}>
               <video ref={videoRef} autoPlay playsInline muted />
               {countdown && <div className="countdown-overlay">{countdown}</div>}
             </div>
