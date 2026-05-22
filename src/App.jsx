@@ -605,7 +605,7 @@ export default function App() {
         emojiImage,
         box.x + box.width * placement.x,
         box.y + box.height * placement.y,
-        box.width * 0.32
+        box.width * 0.28
       );
     });
 
@@ -845,7 +845,7 @@ export default function App() {
       {step === "capture" && (
         <main className="capture-screen">
           <h2 className="capture-title">
-            Show your best <span>poses</span>
+            Strike your best <span>poses</span>
           </h2>
           <section className="camera-area" aria-label="Camera preview">
             <div className="video-wrap" style={{ "--capture-ratio": capturePreviewRatio }}>

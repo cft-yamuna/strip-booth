@@ -607,7 +607,7 @@ select {
 }
 
 .emoji-grid button {
-  min-height: 118px;
+  min-height: 106px;
   padding: 0;
   font-size: 23px;
   line-height: 1;
@@ -616,8 +616,8 @@ select {
 }
 
 .emoji-grid img {
-  width: 108px;
-  height: 108px;
+  width: 96px;
+  height: 96px;
   object-fit: contain;
 }
 
